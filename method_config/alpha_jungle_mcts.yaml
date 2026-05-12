@@ -8,7 +8,7 @@ params:
 
   uct_c: 0.70
   # ---- 自适应 UCT 探索系数 ----
-  adaptive_uct: true
+  adaptive_uct: false
   uct_c_max: 1.0
   uct_c_min: 0.5
   uct_decay: "linear"
