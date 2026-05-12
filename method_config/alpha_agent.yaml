@@ -1,0 +1,37 @@
+name: alpha_agent
+method: alpha_agent
+
+params:
+  ideas_per_cycle: 12
+  candidates_per_idea: 1
+  example_count: 3
+  prefer_top_baselines: true
+
+  max_correction_rounds: 2
+  idea_correction_rounds: 1
+  max_refine_rounds: 1
+
+  min_non_null_ratio: 0.05
+  max_operator_count: 12
+  enforce_baseline_diversity: true
+
+  originality_similarity_cap: 0.72
+  min_originality_score: 0.25
+  min_alignment_score: 0.50
+  min_regularized_score: 0.45
+
+  performance_weight: 0.40
+  originality_weight: 0.25
+  alignment_weight: 0.20
+  complexity_weight: 0.15
+
+  ic_scale: 0.05
+  ic_ir_scale: 0.50
+  long_ret_scale: 0.08
+
+  max_symbolic_length: 28
+  max_free_params: 6
+  max_features: 5
+  max_depth: 7
+
+  apply_mmr: true

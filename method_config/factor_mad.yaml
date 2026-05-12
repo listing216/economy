@@ -1,0 +1,14 @@
+name: factor_mad
+method: factor_mad
+
+params:
+  chains_per_cycle: 12
+  debate_rounds: 4
+  max_correction_rounds: 2
+  seed_from_baseline_prob: 0.5
+  init_example_count: 2
+  history_window: 3
+  keep_candidates_per_chain: 1
+  min_non_null_ratio: 0.05
+  enforce_baseline_diversity: true
+  apply_mmr: true

@@ -1,0 +1,46 @@
+name: alpha_jungle_mcts
+method: alpha_jungle_mcts
+
+params:
+  search_budget: 24
+  example_count: 3
+  repository_seed_count: 20
+
+  uct_c: 0.70
+  # ---- 自适应 UCT 探索系数 ----
+  adaptive_uct: true
+  uct_c_max: 1.0
+  uct_c_min: 0.5
+  uct_decay: "cosine"
+  dimension_temperature: 0.45
+  target_dimensions:
+    - effectiveness
+    - diversity
+    - stability
+    - turnover
+    - overfit
+
+  top_forbidden_subtrees: 5
+  min_forbidden_subtree_size: 3
+  enforce_forbidden_subtrees: true
+
+  max_tree_depth: 4
+  max_correction_rounds: 2
+  min_non_null_ratio: 0.05
+  max_operator_count: 12
+  enforce_baseline_diversity: true
+
+  repository_similarity_cap: 0.85
+  effective_reward_threshold: 0.58
+  repo_ic_threshold: 0.015
+
+  mcts_ic_ir_scale: 0.60
+  mcts_sharpe_scale: 1.20
+  turnover_scale: 1.50
+
+  max_symbolic_length: 28
+  max_free_params: 6
+  max_features: 5
+  max_depth: 7
+
+  apply_mmr: true

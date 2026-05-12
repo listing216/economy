@@ -1,0 +1,45 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== 虚拟环境 =====
+venv/
+.venv/
+env/
+.env
+
+# ===== IDE / OS =====
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ===== 数据（体积大、不公开） =====
+量价data2000/
+poolsel/
+
+# ===== 实验产出（每次运行都会重新生成） =====
+results/
+results_*/
+checkpoints/
+checkpoints_*/
+logs/
+
+# ===== 临时 / 缓存 =====
+*.log
+*.tmp
+tmp/
+.cache/
+
+# ===== 敏感信息（防止误提交） =====
+*.key
+*.pem
+secrets.yaml
+.env.local

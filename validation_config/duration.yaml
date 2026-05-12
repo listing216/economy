@@ -1,0 +1,25 @@
+name: duration
+
+poolsel_path: "../poolsel/duration.pkl"
+
+data_deps: {}
+
+metric_hooks:
+  - plain_ic_metrics
+
+metric_hook_params:
+  plain_ic_metrics:
+    horizons: [5, 20]
+
+train_filter: []
+
+validation_filter:
+  - metric: ic_5_mean
+    threshold: 0.02
+    direction: abs_gt
+  - metric: ic_20_mean
+    threshold: 0.04
+    direction: abs_gt
+  # - metric: long_excret
+  #   threshold: 0.045
+  #   direction: gt
