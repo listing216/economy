@@ -7,7 +7,8 @@ tree_viz.py - MCTS 搜索树可视化模块
 
   # 方式 A：MCTS 挖完后直接可视化
   viz = SearchTreeVisualizer.from_mcts_method(method)
-  viz.save_html("mcts_tree.html")
+  viz.save_html("mcts_tree.html")         # 静态报告（树 + 雷达 + 表格）
+  viz.save_animated_html("anim.html")     # 动态展开动画（树逐步生长）
   viz.save_json("mcts_tree.json")
   print(viz.get_stats())
 
@@ -251,6 +252,59 @@ def _truncate(text: str, max_len: int = 80) -> str:
     return text[: max_len - 3] + "..."
 
 
+# ═════════════════════════════════════════════════════════════════════════
+#  动态展开动画支持
+# ═════════════════════════════════════════════════════════════════════════
+
+def _assign_expand_steps(nodes_data: list[dict], edges_data: list[dict]) -> int:
+    """
+    BFS 遍历为每个节点分配 expand_step（从 1 开始），同层按 reward 降序。
+
+    返回最大步数（即节点总数）。
+    """
+    children_of: dict[str, list[str]] = {}
+    parents: dict[str, str] = {}
+    for n in nodes_data:
+        children_of.setdefault(n["id"], [])
+    for e in edges_data:
+        children_of.setdefault(e["from"], []).append(e["to"])
+        parents[e["to"]] = e["from"]
+
+    root_id = next(
+        (n["id"] for n in nodes_data if n["id"] not in parents),
+        nodes_data[0]["id"] if nodes_data else None,
+    )
+    if root_id is None:
+        return 0
+
+    # 清除已有的 expand_step，保证幂等
+    for n in nodes_data:
+        n.pop("expand_step", None)
+
+    node_map = {n["id"]: n for n in nodes_data}
+    queue = [root_id]
+    visited = {root_id}
+    step = 1
+
+    while queue:
+        nid = queue.pop(0)
+        if nid in node_map:
+            node_map[nid]["expand_step"] = step
+        step += 1
+
+        # 子节点按 reward 降序排列（模拟 MCTS 优先扩展高价值节点）
+        children = children_of.get(nid, [])
+        scored = [(c, node_map.get(c, {}).get("reward", 0) or 0) for c in children]
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        for c_id, _ in scored:
+            if c_id not in visited:
+                visited.add(c_id)
+                queue.append(c_id)
+
+    return step - 1
+
+
 def build_tree_figure(
     nodes_data: list[dict],
     edges_data: list[dict],
@@ -349,7 +403,7 @@ def build_tree_figure(
         depth = n["depth"] or 0
         sizes.append(max(14, 32 - depth * 4))
 
-        texts.append(f"{_short_expr(n['expression'])}<br>R={reward:.3f}")
+        texts.append(f"R={reward:.3f}")
 
         # 悬停详细信息
         dim_scores = n.get("dimension_scores", {})
@@ -373,7 +427,7 @@ def build_tree_figure(
             f"<b>{nid}</b><br>"
             f"<b>深度:</b> {depth}<br><br>"
             f"<b>表达式:</b><br>"
-            f"<code style='font-size:11px'>{n['expression']}</code><br><br>"
+            f"{n['expression']}<br><br>"
             f"<b>综合 Reward:</b> {reward:.4f}<br>"
             f"<b>Q-Value:</b> {n.get('q_value', 0):.4f}<br>"
             f"<b>访问次数:</b> {n.get('visits', 1)}<br><br>"
@@ -475,6 +529,286 @@ def build_tree_figure(
         plot_bgcolor="white",
         font=dict(family="Arial, sans-serif"),
     )
+
+    return fig
+
+
+# ═════════════════════════════════════════════════════════════════════════
+#  动态展开动画
+# ═════════════════════════════════════════════════════════════════════════
+
+def build_animated_tree_figure(
+    nodes_data: list[dict],
+    edges_data: list[dict],
+    positions: dict[str, tuple[float, float]],
+    equivalent_groups: list[list[str]] | None = None,
+    title: str = "MCTS 搜索树演化过程",
+    frame_duration: int = 600,
+) -> go.Figure:
+    """
+    构建带动态展开动画的树形图。
+
+    树按 BFS 顺序逐步生长：每帧新增一个节点及其连边，
+    当前扩展节点用红色边框高亮。搭配播放/暂停/重置按钮和进度滑块。
+    """
+    if not _HAS_PLOTLY:
+        raise ImportError("需要安装 plotly: pip install plotly")
+    if not nodes_data:
+        return go.Figure()
+
+    # ── 1. 分配 expand_step ──
+    max_step = _assign_expand_steps(nodes_data, edges_data)
+
+    # ── 2. 全局属性 ──
+    highlighted_ids: set[str] = set()
+    if equivalent_groups:
+        for g in equivalent_groups:
+            highlighted_ids.update(g)
+
+    all_rewards = [n.get("reward", 0) or 0 for n in nodes_data]
+    g_min = min(all_rewards) if all_rewards else 0
+    g_max = max(all_rewards) if all_rewards else 1
+
+    # ── 3. 帧数据生成器 ──
+    def _make_frame_data(step_k: int) -> list[go.Scatter]:
+        """返回 [edge_trace, node_trace] 当前 step_k 的可见元素。"""
+        visible_ids = {
+            n["id"] for n in nodes_data if n.get("expand_step", 999) <= step_k
+        }
+
+        # 边
+        ex: list[float | None] = []
+        ey: list[float | None] = []
+        for e in edges_data:
+            if e["from"] in visible_ids and e["to"] in visible_ids:
+                x0, y0 = positions[e["from"]]
+                x1, y1 = positions[e["to"]]
+                ex.extend([x0, x1, None])
+                ey.extend([y0, y1, None])
+
+        edge_trace = go.Scatter(
+            x=ex, y=ey,
+            mode="lines",
+            line=dict(color="#bbb", width=2),
+            hoverinfo="none",
+            showlegend=False,
+        )
+
+        # 节点
+        vis_nodes = [n for n in nodes_data if n["id"] in visible_ids]
+        xs: list[float] = []
+        ys: list[float] = []
+        colors: list[float] = []
+        sizes: list[float] = []
+        texts: list[str] = []
+        hovers: list[str] = []
+        syms: list[str] = []
+        line_cols: list[str] = []
+
+        for n in vis_nodes:
+            nid = n["id"]
+            if nid not in positions:
+                continue
+            x, y = positions[nid]
+            xs.append(x)
+            ys.append(y)
+
+            reward = n.get("reward", 0) or 0
+            colors.append(reward)
+
+            depth = n.get("depth", 0)
+            sizes.append(max(14, 32 - depth * 4))
+
+            # 节点标签（动画中只显示 reward + 维度，表达式见 hover）
+            t_dim = DIMENSION_LABELS.get(n.get("target_dimension", ""), "")
+            if t_dim:
+                texts.append(f"R={reward:.3f}<br>↑ {t_dim}")
+            else:
+                texts.append(f"R={reward:.3f}")
+
+            # 悬停信息
+            dim_scores = n.get("dimension_scores", {})
+            dim_lines = []
+            for k in DEFAULT_DIMENSIONS:
+                v = dim_scores.get(k, None)
+                label = DIMENSION_LABELS.get(k, k)
+                dim_lines.append(
+                    f"  {label} ({k}): {v:.3f}" if v is not None
+                    else f"  {label} ({k}): N/A"
+                )
+            metrics = n.get("metrics", {})
+            suggestion = _truncate(n.get("refinement_suggestion", ""), 120)
+            tgt = DIMENSION_LABELS.get(
+                n.get("target_dimension", ""), n.get("target_dimension", "")
+            )
+            hovers.append(
+                f"<b>{nid}</b><br>"
+                f"<b>深度:</b> {depth}<br><br>"
+                f"<b>表达式:</b><br>"
+                f"{n['expression']}<br><br>"
+                f"<b>综合 Reward:</b> {reward:.4f}<br>"
+                f"<b>Q-Value:</b> {n.get('q_value', 0):.4f}<br>"
+                f"<b>访问次数:</b> {n.get('visits', 1)}<br><br>"
+                f"<b>目标维度:</b> {tgt}<br>"
+                f"<b>改进建议:</b> {suggestion}<br><br>"
+                f"<b>5 维评分:</b><br>"
+                + "<br>".join(dim_lines) + "<br><br>"
+                f"<b>IC(5) mean:</b> {metrics.get('ic_mean', 'N/A')}<br>"
+                f"<b>IC IR:</b> {metrics.get('ic_ir', 'N/A')}"
+            )
+
+            # 标记形状
+            syms.append("diamond" if nid in highlighted_ids else "circle")
+
+            # 当前帧新展开的节点红色边框
+            line_cols.append("#e74c3c" if n.get("expand_step") == step_k else "#333")
+
+        node_trace = go.Scatter(
+            x=xs, y=ys,
+            mode="markers+text",
+            marker=dict(
+                size=sizes,
+                color=colors,
+                colorscale="RdYlGn",
+                cmin=g_min,
+                cmax=g_max,
+                showscale=(step_k == max_step),
+                colorbar=dict(title="Reward", x=1.02, len=0.6),
+                line=dict(width=1.5, color=line_cols),
+                symbol=syms,
+            ),
+            text=texts,
+            textposition="bottom center",
+            textfont=dict(size=11, color="#333"),
+            hovertext=hovers,
+            hoverinfo="text",
+            hoverlabel=dict(bgcolor="white", font_size=12, align="left"),
+            showlegend=False,
+        )
+        return [edge_trace, node_trace]
+
+    # ── 4. 基线帧（step 1 = 仅根节点）──
+    base_data = _make_frame_data(1)
+
+    # ── 5. 后续帧（包含 step 1 便于滑块/重置跳转） ──
+    frames = [
+        go.Frame(data=_make_frame_data(k), name=str(k))
+        for k in range(1, max_step + 1)
+    ]
+
+    # ── 6. 创建图形 ──
+    fig = go.Figure(data=base_data, frames=frames)
+
+    # ── 7. 进度滑块 ──
+    slider_steps = [
+        {
+            "args": [[str(k)], {
+                "frame": {"duration": 0, "redraw": True},
+                "mode": "immediate",
+                "transition": {"duration": 0},
+            }],
+            "label": str(k),
+            "method": "animate",
+        }
+        for k in range(1, max_step + 1)
+    ]
+    sliders = [{
+        "active": 0,
+        "yanchor": "top",
+        "xanchor": "left",
+        "currentvalue": {
+            "font": {"size": 14},
+            "prefix": "扩展步: ",
+            "visible": True,
+            "xanchor": "right",
+        },
+        "transition": {"duration": 0},
+        "pad": {"b": 10, "t": 30},
+        "len": 0.9,
+        "x": 0.1,
+        "y": 0,
+        "steps": slider_steps,
+    }]
+
+    # ── 8. 播放控件 ──
+    updatemenus = [{
+        "type": "buttons",
+        "direction": "left",
+        "buttons": [
+            {
+                "label": "▶ Play",
+                "method": "animate",
+                "args": [None, {
+                    "frame": {"duration": frame_duration, "redraw": True},
+                    "fromcurrent": True,
+                    "mode": "immediate",
+                    "transition": {"duration": 0},
+                    "loop": False,
+                }],
+            },
+            {
+                "label": "⏸",
+                "method": "animate",
+                "args": [[None], {
+                    "frame": {"duration": 0, "redraw": False},
+                    "mode": "immediate",
+                    "transition": {"duration": 0},
+                }],
+            },
+            {
+                "label": "⟲ Reset",
+                "method": "animate",
+                "args": [["1"], {
+                    "frame": {"duration": 0, "redraw": True},
+                    "mode": "immediate",
+                    "transition": {"duration": 0},
+                }],
+            },
+        ],
+        "pad": {"r": 10, "t": 10},
+        "showactive": False,
+        "x": 0.25,
+        "y": -0.08,
+        "xanchor": "right",
+        "yanchor": "top",
+    }]
+
+    # ── 9. 布局 ──
+    fig.update_layout(
+        title=dict(text=title, x=0.5, font=dict(size=18)),
+        showlegend=False,
+        hovermode="closest",
+        xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-0.05, 1.05]),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-0.05, 1.05]),
+        height=max(500, len(nodes_data) * 55),
+        width=min(1400, max(800, len(nodes_data) * 40)),
+        margin=dict(l=20, r=80, t=60, b=90),
+        plot_bgcolor="white",
+        font=dict(family="Arial, sans-serif"),
+        updatemenus=updatemenus,
+        sliders=sliders,
+    )
+
+    # ── 10. 图例 ──
+    if equivalent_groups:
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=1.02, y=0.35,
+            text=(
+                "<b>图例</b><br>"
+                "● 普通节点<br>"
+                "◇ <span style='color:#e74c3c'>语义等价</span><br>"
+                f"<span style='color:#e74c3c'>共 {len(equivalent_groups)} 组</span><br><br>"
+                "<span style='color:#e74c3c'>●</span> 红边框 = 当前展开"
+            ),
+            showarrow=False,
+            font=dict(size=11),
+            align="left",
+            bordercolor="#ccc",
+            borderwidth=1,
+            borderpad=4,
+            bgcolor="#f9f9f9",
+        )
 
     return fig
 
@@ -738,9 +1072,152 @@ class SearchTreeVisualizer:
         return cls(tree_dict)
 
     def save_html(self, path: str | Path = "mcts_search_tree.html", title: str | None = None) -> str:
-        """生成完整 HTML 报告。"""
+        """生成完整 HTML 报告（静态树 + 雷达图 + 演化表格）。"""
         t = title or f"MCTS 搜索树（{len(self.nodes_data)} 节点）"
         return create_full_report(self.tree_dict, path, title=t)
+
+    def save_animated_html(
+        self,
+        path: str | Path = "mcts_tree_animated.html",
+        title: str | None = None,
+        frame_duration: int = 600,
+    ) -> str:
+        """生成带动态展开动画的 HTML（树逐步生长，非最终状态）。
+
+        使用 JavaScript setInterval + Plotly.react 逐帧更新，不依赖
+        Plotly 内置的 frames 动画系统（后者在离线 HTML 中不可靠）。
+        """
+        t = title or f"MCTS 搜索树演化（{len(self.nodes_data)} 节点）"
+        fig = build_animated_tree_figure(
+            self.nodes_data,
+            self.edges_data,
+            self.positions,
+            equivalent_groups=self.equivalent_groups,
+            title=t,
+            frame_duration=frame_duration,
+        )
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+        import json as _json
+        import plotly.offline as _po
+
+        plotlyjs = _po.get_plotlyjs()
+
+        # 提取各步数据：fig.to_json() 包含 frames，但 Plotly 离线导出不支持
+        fig_data = _json.loads(fig.to_json())
+        init_data = fig_data["data"]
+        layout = fig_data["layout"]
+
+        # 移除 Plotly 自带的动画控件，改用 HTML 控件
+        layout.pop("updatemenus", None)
+        layout.pop("sliders", None)
+
+        # 组装所有步的数据
+        # 第 0 步 = 初始数据（仅根节点），第 1..N-1 步 = 逐帧数据
+        frames_list = fig_data.get("frames", [])
+        steps = [init_data] + [f["data"] for f in frames_list[1:]]
+        n_steps = len(steps)
+
+        layout_json = _json.dumps(layout)
+        steps_json = _json.dumps(steps)
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="margin:0;padding:20px;font-family:Arial,sans-serif;">
+
+<h2 style="text-align:center;color:#2c3e50;margin-bottom:12px;">{t}</h2>
+
+<div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+  <button id="playBtn" style="font-size:15px;padding:5px 16px;cursor:pointer;">▶ Play</button>
+  <button id="resetBtn" style="font-size:15px;padding:5px 16px;cursor:pointer;">⟲ Reset</button>
+  <span id="stepLabel" style="font-size:13px;color:#555;min-width:60px;">1 / {n_steps}</span>
+  <input type="range" id="stepSlider" min="0" max="{n_steps - 1}" value="0"
+         style="width:300px;max-width:40vw;cursor:pointer;">
+</div>
+
+<div id="anim-tree"></div>
+
+<script>{plotlyjs}</script>
+<script>
+(function() {{
+  var steps = {steps_json};
+  var layout = {layout_json};
+  var currentStep = 0;
+  var isPlaying = false;
+  var timer = null;
+  var div = document.getElementById("anim-tree");
+  var slider = document.getElementById("stepSlider");
+  var label = document.getElementById("stepLabel");
+  var playBtn = document.getElementById("playBtn");
+  var resetBtn = document.getElementById("resetBtn");
+
+  function goToStep(k) {{
+    if (k < 0) k = 0;
+    if (k >= steps.length) k = steps.length - 1;
+    if (k === currentStep && k !== 0) return;  // 已在目标步
+    currentStep = k;
+    slider.value = k;
+    label.textContent = (k + 1) + " / " + steps.length;
+    Plotly.react(div, steps[k], layout, {{responsive:true,displaylogo:false}});
+  }}
+
+  function togglePlay() {{
+    if (isPlaying) {{
+      clearInterval(timer);
+      isPlaying = false;
+      playBtn.textContent = "▶ Play";
+      return;
+    }}
+    if (currentStep >= steps.length - 1) {{
+      goToStep(0);
+    }}
+    isPlaying = true;
+    playBtn.textContent = "⏸ Pause";
+    timer = setInterval(function() {{
+      if (currentStep >= steps.length - 1) {{
+        clearInterval(timer);
+        isPlaying = false;
+        playBtn.textContent = "▶ Play";
+        return;
+      }}
+      goToStep(currentStep + 1);
+    }}, {frame_duration});
+  }}
+
+  function reset() {{
+    if (isPlaying) {{
+      clearInterval(timer);
+      isPlaying = false;
+      playBtn.textContent = "▶ Play";
+    }}
+    goToStep(0);
+  }}
+
+  // 慢速拖拽滑块时不触发 react，松手后跳转
+  var sliderTimer = null;
+  slider.addEventListener("input", function() {{
+    label.textContent = (parseInt(this.value) + 1) + " / " + steps.length;
+    if (sliderTimer) clearTimeout(sliderTimer);
+    sliderTimer = setTimeout(function() {{
+      goToStep(parseInt(slider.value));
+    }}, 50);
+  }});
+
+  playBtn.addEventListener("click", togglePlay);
+  resetBtn.addEventListener("click", reset);
+
+  // 初始渲染
+  Plotly.react(div, steps[0], layout, {{responsive:true,displaylogo:false}});
+}})();
+</script>
+
+</body>
+</html>"""
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(html)
+        return str(path)
 
     def save_json(self, path: str | Path = "mcts_tree.json") -> str:
         """将树数据保存为 JSON。"""

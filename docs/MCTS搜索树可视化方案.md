@@ -124,13 +124,16 @@ tree_viz.py
 ├── find_equivalent_groups(nodes)   分组语义等价节点
 ├── flatten_tree(tree_dict)         DFS 拍平为节点/边列表
 ├── compute_tree_layout(nodes, edges) 自顶向下树布局
-├── build_tree_figure(nodes, edges, pos, equiv)  Plotly 树形图
+├── _assign_expand_steps(nodes, edges) BFS 分配动画步序号
+├── build_tree_figure(nodes, edges, pos, equiv)  Plotly 树形图（静态）
+├── build_animated_tree_figure(...)     Plotly 树形图（动态展开动画）
 ├── build_evolution_table(path)     Plotly 演化路径表格
 ├── create_full_report(tree_dict)   合并 HTML
 └── SearchTreeVisualizer
     ├── from_mcts_method(method)    ← 唯一推荐入口
     ├── from_json(path)
-    ├── save_html(path)
+    ├── save_html(path)             静态报告（树 + 雷达图 + 表格）
+    ├── save_animated_html(path)    动态展开动画（树逐步生长）
     ├── save_json(path)
     └── get_stats()
 ```
@@ -249,11 +252,45 @@ IC IR: 0.700
   - node_019: Std(volume, 10) * Rank(close)
 ```
 
-### 4.5 输出文件
+### 4.5 动态展开动画（新增）
+
+相比静态树的"一次性展示最终状态"，动态动画展示的是**搜索树逐步生长的过程**，更接近 MCTS 正在搜索的观感。
+
+**交互方式**：打开 HTML 后，点击右上角的 ▶ Play 按钮，树从根节点开始逐帧扩展，每 0.6 秒新增一个节点。
+
+| 元素 | 说明 |
+|------|------|
+| ▶ Play / ⏸ Pause | 开始 / 暂停动画 |
+| ⟲ Reset | 回到第 1 步（仅根节点） |
+| 步进滑块 | 拖拽跳转到任意搜索步 |
+| 红色边框节点 | 当前帧新展开的节点 |
+| 节点标签 | Reward + 改进维度（完整表达式见 hover） |
+
+**搜索顺序**：按 BFS 展开，同层子节点按 Reward 从高到低排列，模拟 MCTS 优先扩展高价值分支的行为。
+
+```
+Step 1:        Step 5:               Step 23:
+● root         ● root                ● root
+               ├── ● A               ├── ● A
+               ├── ● C               │    ├── ● A1
+               └── ● B               │    │    ├── ● A1a
+                                      │    │    └── ● A1b
+                                      │    ├── ● A2
+                                      │    └── ● A3
+                                      ├── ● C
+                                      │    ├── ● C1
+                                      │    └── ● C2
+                                      └── ● B
+                                           ├── ● B1
+                                           └── ● B2
+```
+
+### 4.6 输出文件
 
 | 文件 | 大小 | 说明 |
 |------|------|------|
-| `viz_output/mcts_search_tree.html` | ~3.6 MB | 自包含交互式 HTML（含 Plotly.js） |
+| `viz_output/mcts_search_tree.html` | ~3.6 MB | 静态交互式报告（树 + 雷达图 + 演化表格 + 等价检测） |
+| `viz_output/mcts_tree_animated.html` | ~3.8 MB | 动态展开动画（树逐步生长，▶ Play 播放） |
 | `viz_output/mcts_tree.json` | ~2 KB | 树数据 JSON（可回读、分享） |
 
 ---
@@ -290,7 +327,8 @@ python run.py --method_config ./method_config/alpha_jungle_mcts.yaml
 from tree_viz import SearchTreeVisualizer
 
 viz = SearchTreeVisualizer.from_mcts_method(self.mining_method)
-viz.save_html("viz_output/tree.html")
+viz.save_html("viz_output/tree.html")                  # 静态报告
+viz.save_animated_html("viz_output/tree_anim.html")    # 动态展开动画
 ```
 
 适合场景：
@@ -321,4 +359,4 @@ viz.save_html("viz_output/tree.html")
 4. **演化路径追踪**：表格展示表达式从根到叶的每步改进
 
 
-总计新增代码：`tree_viz.py` ~810 行 + `mining_methods.py` 45 行 + `run.py` 14 行。
+总计新增代码：`tree_viz.py` ~870 行 + `mining_methods.py` 45 行 + `run.py` 14 行。
