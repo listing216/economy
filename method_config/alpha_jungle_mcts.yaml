@@ -1,17 +1,14 @@
 name: alpha_jungle_mcts
 method: alpha_jungle_mcts
-
 params:
   search_budget: 24
   example_count: 3
   repository_seed_count: 20
-
   uct_c: 0.70
-  # ---- 自适应 UCT 探索系数 ----
-  adaptive_uct: false
+  adaptive_uct: true
   uct_c_max: 1.0
   uct_c_min: 0.5
-  uct_decay: "linear"
+  uct_decay: linear
   dimension_temperature: 0.45
   target_dimensions:
     - effectiveness
@@ -19,28 +16,51 @@ params:
     - stability
     - turnover
     - overfit
-
   top_forbidden_subtrees: 5
   min_forbidden_subtree_size: 3
   enforce_forbidden_subtrees: true
-
   max_tree_depth: 4
   max_correction_rounds: 2
   min_non_null_ratio: 0.05
   max_operator_count: 12
   enforce_baseline_diversity: true
-
   repository_similarity_cap: 0.85
   effective_reward_threshold: 0.58
   repo_ic_threshold: 0.015
-
   mcts_ic_ir_scale: 0.60
   mcts_sharpe_scale: 1.20
   turnover_scale: 1.50
-
   max_symbolic_length: 28
   max_free_params: 6
   max_features: 5
   max_depth: 7
-
   apply_mmr: true
+
+explainability:
+  enabled: true
+  ast:
+    enabled: true
+    max_depth: 6
+    max_nodes: 20
+  semantics:
+    enabled: true
+    field_semantics_path: explainability/semantics/field_semantics.yaml
+    operator_semantics_path: explainability/semantics/operator_semantics.yaml
+  scoring:
+    enabled: true
+    ideal_max_nodes: 10
+    ideal_max_depth: 5
+    ideal_max_fields: 3
+    ideal_max_operators: 5
+  mmr:
+    use_interpretability_score: true
+    filter_by_interpretability: false
+    min_interpretability_score: 0.60
+    quality_weight: 0.70
+    explainability_weight: 0.15
+    correlation_weight: 0.10
+    complexity_weight: 0.05
+  report:
+    enabled: true
+    save_json: true
+    save_markdown: true

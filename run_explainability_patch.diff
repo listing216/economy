@@ -1,0 +1,19 @@
+diff --git a/run.py b/run.py
+--- a/run.py
++++ b/run.py
+@@ -1,3 +1,18 @@
++# NOTE
++# The earlier patch file omitted unified-diff hunk line ranges and may be
++# rejected by `patch` with errors such as "Only garbage was found".
++#
++# Because the upstream run.py can vary slightly by formatting, please apply the
++# robust string-based patcher included in this package instead:
++#
++#     python apply_run_explainability_patch.py
++#
++# It creates run.py.bak and inserts only the explainability hooks described in
++# docs/explainability_improvement_plan.md.
++#
++# The previous non-standard patch is kept as:
++#     run_explainability_patch.legacy.diff
++

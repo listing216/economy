@@ -39,6 +39,8 @@ from factor_mining import (
     is_low_correlated_with_fixed_factors,
     mmr_selection,
 )
+from explainability.factor_explainer import explain_factor
+from explainability.report import save_explainability_artifacts
 
 
 class AutomatedFactorSystem:
@@ -179,13 +181,55 @@ class AutomatedFactorSystem:
         profile.setdefault("name", cfg_path.stem)
         profile.setdefault("method", "factor_mad")
         profile["params"] = profile.get("params") or {}
+        profile["explainability"] = profile.get("explainability") or {}
         self.method_profile = profile
+        self.explainability_config = profile["explainability"]
         self.method_config_path = cfg_path
 
         self.logger.info(f"加载挖掘方法配置：{profile['name']} ({cfg_path})")
         self.logger.info(
             f"挖掘方法详情：method={profile['method']}, params={profile['params']}"
         )
+
+    def attach_explainability_to_df(self, factors_df: pd.DataFrame) -> pd.DataFrame:
+        """为候选因子补充 AST、语义标签和解释性评分。"""
+        cfg = getattr(self, "explainability_config", {}) or {}
+        if factors_df.empty or not cfg.get("enabled", False):
+            return factors_df
+
+        known_fields = set(getattr(self, "fields", []) or [])
+        ops_info = getattr(self, "ops_info", {}) or {}
+        known_operators = set(ops_info.keys()) if isinstance(ops_info, dict) else set(ops_info)
+
+        rows = []
+        for _, row in factors_df.iterrows():
+            record = row.to_dict()
+            expression = str(record.get("expression", ""))
+            explanation = record.get("explanation", "")
+            try:
+                if pd.isna(explanation):
+                    explanation = ""
+            except Exception:
+                pass
+
+            try:
+                exp = explain_factor(
+                    expression=expression,
+                    known_fields=known_fields,
+                    known_operators=known_operators,
+                    llm_explanation=str(explanation or ""),
+                    config=cfg,
+                )
+                record["explainability"] = exp
+                record["interpretability_score"] = exp.get("interpretability_score", np.nan)
+                record["complexity_penalty"] = exp.get("complexity_penalty", np.nan)
+                record["semantic_tags"] = ",".join(exp.get("semantic_tags", []))
+                record["explainability_parse_status"] = exp.get("parse_status", "unknown")
+            except Exception as e:
+                self.logger.warning(f"因子 {record.get('alpha_id')} 解释性分析失败：{e}")
+            rows.append(record)
+
+        return pd.DataFrame(rows)
 
     def load_data(self):
         self.logger.info("加载基础数据...")
@@ -323,6 +367,7 @@ class AutomatedFactorSystem:
         self, factors_df: pd.DataFrame, label: str
     ) -> tuple:
         self.logger.info(f"MMR 筛选（{label}）")
+        factors_df = self.attach_explainability_to_df(factors_df)
 
         alpha_list = factors_df["expression"].to_list()
         alpha_name = factors_df["alpha_id"].to_list()
@@ -347,6 +392,7 @@ class AutomatedFactorSystem:
             num_to_select=self.config["factors_per_cycle"],
             lambda_param=self.config["mmr_lambda"],
             threshold=self.config["mmr_threshold"],
+            explainability_config=getattr(self, "explainability_config", {}),
         )
 
         selected_df = factors_df[factors_df["alpha_id"].isin(selected_alphas)].copy()
@@ -473,6 +519,26 @@ class AutomatedFactorSystem:
         factors_dir.mkdir(exist_ok=True)
         for alpha_id, fv in final_factor_values.items():
             fv.to_parquet(factors_dir / f"{alpha_id}.pqt")
+
+        exp_cfg = getattr(self, "explainability_config", {}) or {}
+        if exp_cfg.get("enabled", False) and exp_cfg.get("report", {}).get("enabled", False):
+            default_exp_root = Path(self.config["metrics_save_path"]).parent / "explainability"
+            exp_dir = (
+                Path(self.config.get("explainability_save_path", default_exp_root))
+                / f"cycle_{cycle_count:04d}_{cycle_timestamp}"
+            )
+            for _, row in final_factors_df.iterrows():
+                exp = row.get("explainability", {})
+                if not isinstance(exp, dict):
+                    continue
+                save_explainability_artifacts(
+                    factor_id=str(row.get("alpha_id")),
+                    expression=str(row.get("expression", "")),
+                    explainability=exp,
+                    metrics=row.to_dict(),
+                    output_dir=exp_dir,
+                )
+            self.logger.info(f"解释性报告已保存到：{exp_dir}")
 
         # 更新 baseline（本轮入库的因子下轮可用）
         self.baseline_factors.update(final_factor_values)

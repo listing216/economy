@@ -1,0 +1,53 @@
+open:
+  type: price
+  name_cn: 开盘价
+  meaning: 反映当日开盘阶段的价格水平
+  role: 价格行为
+
+high:
+  type: price
+  name_cn: 最高价
+  meaning: 反映日内上行触及水平
+  role: 价格行为
+
+low:
+  type: price
+  name_cn: 最低价
+  meaning: 反映日内下行触及水平
+  role: 价格行为
+
+close:
+  type: price
+  name_cn: 收盘价
+  meaning: 常用于趋势、动量、反转和收益计算
+  role: 价格行为
+
+vwap:
+  type: price_volume
+  name_cn: 成交量加权平均价
+  meaning: 反映平均成交成本和价量综合状态
+  role: 价量综合信息
+
+volume:
+  type: liquidity
+  name_cn: 成交量
+  meaning: 反映交易活跃度和市场关注度
+  role: 流动性与交易活跃度
+
+amount:
+  type: liquidity
+  name_cn: 成交额
+  meaning: 反映成交规模和资金参与强度
+  role: 流动性与资金参与度
+
+turnover:
+  type: liquidity
+  name_cn: 换手率
+  meaning: 反映股票筹码交换强度
+  role: 交易活跃度与拥挤度
+
+turnover_rate:
+  type: liquidity
+  name_cn: 换手率
+  meaning: 反映股票筹码交换强度
+  role: 交易活跃度与拥挤度

@@ -1,0 +1,89 @@
+Rank:
+  category: cross_sectional
+  meaning: 横截面排序
+  financial_interpretation: 比较个股相对市场其他股票的强弱
+  risk: 可能丢失原始数值幅度信息
+
+Ts_Rank:
+  category: time_series
+  meaning: 时间序列排序
+  financial_interpretation: 衡量当前变量在历史窗口中的相对位置
+  risk: 在状态切换时可能存在滞后
+
+Delta:
+  category: time_series
+  meaning: 时间序列差分
+  financial_interpretation: 衡量变量在指定窗口前后的变化，可用于动量或反转类信号
+  risk: 短窗口差分容易受到噪声影响
+
+Diff:
+  category: time_series
+  meaning: 时间序列差分
+  financial_interpretation: 衡量变量的历史变化幅度
+  risk: 对异常值和短期冲击较敏感
+
+Ts_Mean:
+  category: time_series
+  meaning: 时间序列均值
+  financial_interpretation: 用于平滑短期波动，刻画变量的中期水平
+  risk: 可能滞后于市场状态切换
+
+Mean:
+  category: time_series
+  meaning: 均值计算
+  financial_interpretation: 用于刻画变量的平均水平
+  risk: 可能掩盖极端变化
+
+Ts_Std:
+  category: time_series
+  meaning: 时间序列标准差
+  financial_interpretation: 衡量变量在历史窗口内的波动程度
+  risk: 高波动可能同时代表风险、分歧或事件冲击
+
+Std:
+  category: time_series
+  meaning: 标准差
+  financial_interpretation: 衡量变量离散程度或波动水平
+  risk: 对极端值较敏感
+
+Corr:
+  category: time_series_relation
+  meaning: 时间序列相关性
+  financial_interpretation: 衡量两个变量在指定窗口内的同步变化关系
+  risk: 相关性不代表因果关系
+
+Correlation:
+  category: time_series_relation
+  meaning: 时间序列相关性
+  financial_interpretation: 衡量两个变量的历史联动关系
+  risk: 相关结构可能随市场状态变化而失效
+
+Abs:
+  category: transform
+  meaning: 绝对值转换
+  financial_interpretation: 关注变量变化幅度而非方向
+  risk: 可能丢失方向性信息
+
+Log:
+  category: transform
+  meaning: 对数转换
+  financial_interpretation: 压缩极端值影响，常用于价格或规模变量
+  risk: 对非正数输入不适用
+
+Sign:
+  category: transform
+  meaning: 符号函数
+  financial_interpretation: 仅保留方向信息
+  risk: 会丢失变化幅度
+
+Max:
+  category: transform
+  meaning: 最大值
+  financial_interpretation: 提取较强状态或极端上行水平
+  risk: 容易受异常值影响
+
+Min:
+  category: transform
+  meaning: 最小值
+  financial_interpretation: 提取较弱状态或极端下行水平
+  risk: 容易受异常值影响
